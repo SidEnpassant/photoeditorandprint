@@ -38,13 +38,14 @@ class _CameraScreenState extends State<CameraScreen> {
   int _countdown = 0;
   Offset? _focusPoint;
   int _frameCount = 0;
-  bool _isIntensityPanelOpen = true; // Add this state variable
+  bool _isIntensityPanelOpen = true;
 
-  // For real-time filter preview
+  // For real-time filter preview - Fixed variables
   Uint8List? _previewImageBytes;
   img.Image? _lastProcessedImage;
   bool _isProcessingFrame = false;
   File? _lastPhotoFile;
+  bool _useFilteredPreview = false; // New flag to control preview mode
 
   @override
   void initState() {
@@ -64,12 +65,17 @@ class _CameraScreenState extends State<CameraScreen> {
       });
       _controller = CameraController(
         _cameras[_selectedCameraIdx],
-        ResolutionPreset.medium, // Preview
+        ResolutionPreset.medium,
         enableAudio: false,
       );
       await _controller!.initialize();
       setState(() => _isCameraInitialized = true);
-      _controller!.startImageStream(_processCameraImage);
+
+      // Start image stream only if a filter is selected
+      if (_selectedFilter != 0) {
+        _controller!.startImageStream(_processCameraImage);
+        setState(() => _useFilteredPreview = true);
+      }
     } catch (e) {
       setState(() => _error = 'Camera error: $e');
     }
@@ -77,9 +83,11 @@ class _CameraScreenState extends State<CameraScreen> {
 
   void _processCameraImage(CameraImage cameraImage) async {
     _frameCount++;
-    // Throttle: process every 3rd frame only
-    if (_frameCount % 3 != 0) return;
+    // Process every 2nd frame for better performance
+    if (_frameCount % 2 != 0) return;
     if (_isProcessingFrame) return;
+    if (_selectedFilter == 0) return; // Don't process if no filter selected
+
     _isProcessingFrame = true;
     try {
       // Convert YUV to RGB
@@ -93,11 +101,13 @@ class _CameraScreenState extends State<CameraScreen> {
       _lastProcessedImage = filtered;
       // Encode to PNG for display
       final pngBytes = img.encodePng(filtered);
-      setState(() {
-        _previewImageBytes = Uint8List.fromList(pngBytes);
-      });
+      if (mounted && _selectedFilter != 0) {
+        setState(() {
+          _previewImageBytes = Uint8List.fromList(pngBytes);
+        });
+      }
     } catch (_) {
-      // ignore errors for now
+      // Ignore errors for now
     } finally {
       _isProcessingFrame = false;
     }
@@ -134,17 +144,23 @@ class _CameraScreenState extends State<CameraScreen> {
       _selectedCameraIdx = (_selectedCameraIdx + 1) % _cameras.length;
       _previewImageBytes = null;
       _lastProcessedImage = null;
+      _useFilteredPreview = false;
     });
     await _controller?.stopImageStream();
     await _controller?.dispose();
     _controller = CameraController(
       _cameras[_selectedCameraIdx],
-      ResolutionPreset.medium, // Use medium for preview performance
+      ResolutionPreset.medium,
       enableAudio: false,
     );
     await _controller!.initialize();
     setState(() => _isCameraInitialized = true);
-    _controller!.startImageStream(_processCameraImage);
+
+    // Restart image stream if filter is selected
+    if (_selectedFilter != 0) {
+      _controller!.startImageStream(_processCameraImage);
+      setState(() => _useFilteredPreview = true);
+    }
   }
 
   Future<void> _toggleFlash() async {
@@ -152,6 +168,34 @@ class _CameraScreenState extends State<CameraScreen> {
     _flashOn = !_flashOn;
     await _controller!.setFlashMode(_flashOn ? FlashMode.torch : FlashMode.off);
     setState(() {});
+  }
+
+  // New method to handle filter changes
+  Future<void> _changeFilter(int newFilterIndex) async {
+    if (_selectedFilter == newFilterIndex) return;
+
+    setState(() {
+      _selectedFilter = newFilterIndex;
+      _frameCount = 0;
+      _previewImageBytes = null;
+      _lastProcessedImage = null;
+    });
+
+    if (_controller != null && _isCameraInitialized) {
+      if (newFilterIndex == 0) {
+        // No filter - stop image stream and use normal preview
+        await _controller!.stopImageStream();
+        setState(() => _useFilteredPreview = false);
+      } else {
+        // Filter selected - start/restart image stream
+        if (_useFilteredPreview) {
+          await _controller!.stopImageStream();
+        }
+        await Future.delayed(const Duration(milliseconds: 100));
+        _controller!.startImageStream(_processCameraImage);
+        setState(() => _useFilteredPreview = true);
+      }
+    }
   }
 
   img.Image _applyFilterToImage(
@@ -201,7 +245,7 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _capturePhoto() async {
     if (!_isCameraInitialized || _controller == null) return;
     try {
-      if (_lastProcessedImage != null) {
+      if (_lastProcessedImage != null && _selectedFilter != 0) {
         final tempDir = await getTemporaryDirectory();
         final filteredPath =
             '${tempDir.path}/filtered_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -492,10 +536,7 @@ class _CameraScreenState extends State<CameraScreen> {
                         itemBuilder: (context, index) => Padding(
                           padding: const EdgeInsets.only(bottom: 8.0),
                           child: GestureDetector(
-                            onTap: () => setState(() {
-                              _selectedFilter = index;
-                              _frameCount = 0;
-                            }),
+                            onTap: () => _changeFilter(index), // Use new method
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
                               decoration: BoxDecoration(
@@ -762,12 +803,16 @@ class _CameraScreenState extends State<CameraScreen> {
                                     child: Stack(
                                       fit: StackFit.expand,
                                       children: [
-                                        if (_previewImageBytes != null)
+                                        // Show filtered preview if available and filter is selected
+                                        if (_useFilteredPreview &&
+                                            _selectedFilter != 0 &&
+                                            _previewImageBytes != null)
                                           Image.memory(
                                             _previewImageBytes!,
                                             fit: BoxFit.cover,
                                           )
                                         else
+                                          // Show normal camera preview
                                           CameraPreview(_controller!),
                                         if (_countdown > 0)
                                           Center(
