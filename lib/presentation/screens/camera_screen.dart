@@ -4,7 +4,7 @@ import 'photo_preview_screen.dart';
 import 'dart:io';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
-import 'dart:typed_data'; // Added for Uint8List
+import 'dart:typed_data';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -40,12 +40,10 @@ class _CameraScreenState extends State<CameraScreen> {
   int _frameCount = 0;
   bool _isIntensityPanelOpen = true;
 
-  // For real-time filter preview - Fixed variables
   Uint8List? _previewImageBytes;
   img.Image? _lastProcessedImage;
   bool _isProcessingFrame = false;
   File? _lastPhotoFile;
-  // bool _useFilteredPreview = false; // New flag to control preview mode
 
   @override
   void initState() {
@@ -70,7 +68,7 @@ class _CameraScreenState extends State<CameraScreen> {
       );
       await _controller!.initialize();
       setState(() => _isCameraInitialized = true);
-      // Always start image stream after initialization
+
       await _controller!.startImageStream(_processCameraImage);
     } catch (e) {
       setState(() => _error = 'Camera error: $e');
@@ -83,9 +81,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (_isProcessingFrame) return;
     _isProcessingFrame = true;
     try {
-      // Convert to RGB
       img.Image rgbImage = _convertYUV420toImage(cameraImage);
-      // Apply selected filter if any, else just use RGB image
       img.Image filtered = _selectedFilter == 0
           ? rgbImage
           : _applyFilterToImage(rgbImage, _selectedFilter, _filterIntensity);
@@ -145,7 +141,6 @@ class _CameraScreenState extends State<CameraScreen> {
     );
     await _controller!.initialize();
     setState(() => _isCameraInitialized = true);
-    // Always start image stream after initialization
     await _controller!.startImageStream(_processCameraImage);
   }
 
@@ -156,7 +151,6 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() {});
   }
 
-  // New method to handle filter changes
   Future<void> _changeFilter(int newFilterIndex) async {
     if (_selectedFilter == newFilterIndex) return;
     setState(() {
@@ -173,35 +167,35 @@ class _CameraScreenState extends State<CameraScreen> {
     double intensity,
   ) {
     switch (filterIdx) {
-      case 1: // Vintage
+      case 1:
         return img.colorOffset(
           image,
           red: (40 * intensity).toInt(),
           green: (20 * intensity).toInt(),
           blue: (-30 * intensity).toInt(),
         );
-      case 2: // B&W
+      case 2:
         var bw = img.grayscale(image);
         if (bw == null) return image;
         return bw;
-      case 3: // Color+
+      case 3:
         return img.adjustColor(image, saturation: 1 + 0.2 * intensity);
-      case 4: // Artistic
+      case 4:
         var sep = img.sepia(image, amount: (100 * intensity).toInt());
         if (sep == null) return image;
         return sep;
-      case 5: // Party
+      case 5:
         return img.adjustColor(image, gamma: 1 + 0.5 * intensity);
-      case 6: // Cool
+      case 6:
         return img.colorOffset(image, blue: (30 * intensity).toInt());
-      case 7: // Warm
+      case 7:
         return img.colorOffset(image, red: (30 * intensity).toInt());
-      case 8: // Bright
+      case 8:
         final bright = img.brightness(image, (40 * intensity).toInt());
         if (bright != null) return bright;
         return image;
 
-      case 9: // Dark
+      case 9:
         final dark = img.brightness(image, (-40 * intensity).toInt());
         if (dark != null) return dark;
         return image;
@@ -236,7 +230,6 @@ class _CameraScreenState extends State<CameraScreen> {
         );
         return;
       }
-      // fallback: use the camera's takePicture if no processed frame
       final file = await _controller!.takePicture();
       final rawBytes = await File(file.path).readAsBytes();
       img.Image? captured = img.decodeImage(rawBytes);
@@ -285,7 +278,6 @@ class _CameraScreenState extends State<CameraScreen> {
       setState(() {
         _focusPoint = Offset(x, y);
       });
-      // Optionally, show a focus indicator for a short time
       Future.delayed(const Duration(seconds: 1), () {
         setState(() {
           _focusPoint = null;
@@ -314,12 +306,12 @@ class _CameraScreenState extends State<CameraScreen> {
 
   ColorFilter? _getColorFilter(int index, [double intensity = 1.0]) {
     switch (index) {
-      case 1: // Vintage
+      case 1:
         return ColorFilter.mode(
           Color(0xFF704214).withOpacity(intensity),
           BlendMode.modulate,
         );
-      case 2: // B&W
+      case 2:
         return ColorFilter.matrix(<double>[
           0.2126 * intensity + (1 - intensity),
           0.7152 * intensity,
@@ -342,7 +334,7 @@ class _CameraScreenState extends State<CameraScreen> {
           1,
           0,
         ]);
-      case 3: // Color+
+      case 3:
         return ColorFilter.matrix(<double>[
           1 + 0.2 * intensity,
           0,
@@ -365,27 +357,27 @@ class _CameraScreenState extends State<CameraScreen> {
           1,
           0,
         ]);
-      case 4: // Artistic
+      case 4:
         return ColorFilter.mode(
           Color(0xFF00BFFF).withOpacity(intensity),
           BlendMode.screen,
         );
-      case 5: // Party
+      case 5:
         return ColorFilter.mode(
           Color(0xFFFF69B4).withOpacity(intensity),
           BlendMode.lighten,
         );
-      case 6: // Cool
+      case 6:
         return ColorFilter.mode(
           Color(0xFF00FFFF).withOpacity(intensity),
           BlendMode.modulate,
         );
-      case 7: // Warm
+      case 7:
         return ColorFilter.mode(
           Color(0xFFFFA500).withOpacity(intensity),
           BlendMode.modulate,
         );
-      case 8: // Bright
+      case 8:
         return ColorFilter.matrix(<double>[
           1 + 0.3 * intensity,
           0,
@@ -408,7 +400,7 @@ class _CameraScreenState extends State<CameraScreen> {
           1,
           0,
         ]);
-      case 9: // Dark
+      case 9:
         return ColorFilter.matrix(<double>[
           1 - 0.3 * intensity,
           0,
@@ -450,7 +442,6 @@ class _CameraScreenState extends State<CameraScreen> {
       body: SafeArea(
         child: Row(
           children: [
-            // Left: Filter selection panel
             Container(
               width: 140,
               decoration: BoxDecoration(
@@ -505,7 +496,7 @@ class _CameraScreenState extends State<CameraScreen> {
                         itemBuilder: (context, index) => Padding(
                           padding: const EdgeInsets.only(bottom: 8.0),
                           child: GestureDetector(
-                            onTap: () => _changeFilter(index), // Use new method
+                            onTap: () => _changeFilter(index),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
                               decoration: BoxDecoration(
@@ -569,7 +560,6 @@ class _CameraScreenState extends State<CameraScreen> {
                 ],
               ),
             ),
-            // Intensity Panel (New)
             if (_selectedFilter != 0)
               AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
@@ -593,7 +583,6 @@ class _CameraScreenState extends State<CameraScreen> {
                 ),
                 child: Column(
                   children: [
-                    // Toggle button
                     Container(
                       padding: const EdgeInsets.symmetric(vertical: 24),
                       child: GestureDetector(
@@ -621,7 +610,6 @@ class _CameraScreenState extends State<CameraScreen> {
                         ),
                       ),
                     ),
-                    // Intensity controls
                     if (_isIntensityPanelOpen)
                       Expanded(
                         child: Container(
@@ -637,7 +625,6 @@ class _CameraScreenState extends State<CameraScreen> {
                           ),
                           child: Column(
                             children: [
-                              // Intensity label
                               RotatedBox(
                                 quarterTurns: 3,
                                 child: Text(
@@ -650,7 +637,6 @@ class _CameraScreenState extends State<CameraScreen> {
                                 ),
                               ),
                               const SizedBox(height: 20),
-                              // Vertical slider
                               Expanded(
                                 child: RotatedBox(
                                   quarterTurns: 3,
@@ -682,7 +668,6 @@ class _CameraScreenState extends State<CameraScreen> {
                                 ),
                               ),
                               const SizedBox(height: 12),
-                              // Percentage display
                               Text(
                                 '${(_filterIntensity * 100).toInt()}%',
                                 style: TextStyle(
@@ -699,7 +684,6 @@ class _CameraScreenState extends State<CameraScreen> {
                   ],
                 ),
               ),
-            // Center: Camera preview
             Expanded(
               child: Container(
                 decoration: const BoxDecoration(color: Color(0xFF000000)),
@@ -772,14 +756,12 @@ class _CameraScreenState extends State<CameraScreen> {
                                     child: Stack(
                                       fit: StackFit.expand,
                                       children: [
-                                        // Show filtered preview if available
                                         if (_previewImageBytes != null)
                                           Image.memory(
                                             _previewImageBytes!,
                                             fit: BoxFit.cover,
                                           )
                                         else
-                                          // Show normal camera preview as fallback
                                           CameraPreview(_controller!),
                                         if (_countdown > 0)
                                           Center(
@@ -858,7 +840,6 @@ class _CameraScreenState extends State<CameraScreen> {
                 ),
               ),
             ),
-            // Right: Camera controls
             Container(
               width: 200,
               decoration: BoxDecoration(
@@ -881,7 +862,6 @@ class _CameraScreenState extends State<CameraScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Camera switch button
                   Container(
                     width: 60,
                     height: 60,
@@ -905,7 +885,6 @@ class _CameraScreenState extends State<CameraScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  // Flash button
                   Container(
                     width: 60,
                     height: 60,
@@ -935,7 +914,6 @@ class _CameraScreenState extends State<CameraScreen> {
                     ),
                   ),
                   const SizedBox(height: 32),
-                  // Timer dropdown
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -1007,7 +985,6 @@ class _CameraScreenState extends State<CameraScreen> {
                     ),
                   ),
                   const SizedBox(height: 40),
-                  // Last photo thumbnail
                   if (_lastPhotoFile != null)
                     Container(
                       margin: const EdgeInsets.only(bottom: 24),
@@ -1050,7 +1027,6 @@ class _CameraScreenState extends State<CameraScreen> {
                         ],
                       ),
                     ),
-                  // Capture button
                   Container(
                     width: 100,
                     height: 100,

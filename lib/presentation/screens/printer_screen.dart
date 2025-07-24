@@ -50,11 +50,9 @@ class _PrinterScreenState extends State<PrinterScreen> {
       _availablePrinters = [];
       _selectedPrinter = null;
     });
-    // For demo: scan common local network IPs (192.168.0.x and 192.168.1.x)
     List<DiscoveredPrinter> found = [];
     for (var subnet in ['192.168.0', '192.168.1']) {
       for (int i = 2; i < 10; i++) {
-        // Limit for demo
         final ip = '$subnet.$i';
         final printer = NetworkPrinter(
           PaperSize.mm80,
@@ -126,7 +124,7 @@ class _PrinterScreenState extends State<PrinterScreen> {
         bytes += generator.feed(2);
         bytes += generator.cut();
 
-        printer.rawBytes(bytes); // ✅ Just call, don't assign or compare
+        printer.rawBytes(bytes);
 
         setState(() {
           job.status = 'Printed';
@@ -139,7 +137,7 @@ class _PrinterScreenState extends State<PrinterScreen> {
         });
       }
 
-      printer.disconnect(); // no await needed
+      printer.disconnect();
     } catch (e) {
       setState(() {
         job.status = 'Failed';
@@ -494,7 +492,6 @@ class _PrinterScreenState extends State<PrinterScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header Section
                 Row(
                   children: [
                     Container(
@@ -519,7 +516,6 @@ class _PrinterScreenState extends State<PrinterScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Photo Preview Section
                 Container(
                   width: double.infinity,
                   height: 300,
@@ -547,7 +543,6 @@ class _PrinterScreenState extends State<PrinterScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Paper Size Section
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
@@ -620,11 +615,9 @@ class _PrinterScreenState extends State<PrinterScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Printer Selection Section
                 _buildPrinterSelector(),
                 const SizedBox(height: 24),
 
-                // Print Status Section
                 if (_printStatus != null)
                   Container(
                     width: double.infinity,
@@ -696,7 +689,6 @@ class _PrinterScreenState extends State<PrinterScreen> {
                     ),
                   ),
 
-                // Print Button
                 SizedBox(
                   width: double.infinity,
                   height: 56,
@@ -763,7 +755,6 @@ class _PrinterScreenState extends State<PrinterScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // Print Queue Section
                 Row(
                   children: [
                     Container(
