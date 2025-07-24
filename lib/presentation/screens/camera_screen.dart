@@ -4,6 +4,7 @@ import 'photo_preview_screen.dart';
 import 'dart:io';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
+import 'dart:typed_data'; // Added for Uint8List
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -34,6 +35,13 @@ class _CameraScreenState extends State<CameraScreen> {
   int _timer = 0;
   String? _error;
   double _filterIntensity = 1.0;
+  int _countdown = 0;
+  Offset? _focusPoint;
+
+  // For real-time filter preview
+  Uint8List? _previewImageBytes;
+  img.Image? _lastProcessedImage;
+  bool _isProcessingFrame = false;
 
   @override
   void initState() {
@@ -53,14 +61,64 @@ class _CameraScreenState extends State<CameraScreen> {
       });
       _controller = CameraController(
         _cameras[_selectedCameraIdx],
-        ResolutionPreset.high,
+        ResolutionPreset.medium, // Use medium for better performance in preview
         enableAudio: false,
       );
       await _controller!.initialize();
       setState(() => _isCameraInitialized = true);
+      _controller!.startImageStream(_processCameraImage);
     } catch (e) {
       setState(() => _error = 'Camera error: $e');
     }
+  }
+
+  void _processCameraImage(CameraImage cameraImage) async {
+    if (_isProcessingFrame) return;
+    _isProcessingFrame = true;
+    try {
+      // Convert YUV to RGB
+      img.Image rgbImage = _convertYUV420toImage(cameraImage);
+      // Apply filter
+      img.Image filtered = _applyFilterToImage(
+        rgbImage,
+        _selectedFilter,
+        _filterIntensity,
+      );
+      _lastProcessedImage = filtered;
+      // Encode to PNG for display
+      final pngBytes = img.encodePng(filtered);
+      setState(() {
+        _previewImageBytes = Uint8List.fromList(pngBytes);
+      });
+    } catch (_) {
+      // ignore errors for now
+    } finally {
+      _isProcessingFrame = false;
+    }
+  }
+
+  img.Image _convertYUV420toImage(CameraImage image) {
+    final int width = image.width;
+    final int height = image.height;
+    final int uvRowStride = image.planes[1].bytesPerRow;
+    final int uvPixelStride = image.planes[1].bytesPerPixel!;
+    final img.Image imgBuffer = img.Image(width, height);
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final int uvIndex = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
+        final int index = y * width + x;
+        final int yp = image.planes[0].bytes[index];
+        final int up = image.planes[1].bytes[uvIndex];
+        final int vp = image.planes[2].bytes[uvIndex];
+        int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
+        int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91)
+            .round()
+            .clamp(0, 255);
+        int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
+        imgBuffer.setPixelRgba(x, y, r, g, b, 255);
+      }
+    }
+    return imgBuffer;
   }
 
   Future<void> _switchCamera() async {
@@ -133,6 +191,26 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _capturePhoto() async {
     if (!_isCameraInitialized || _controller == null) return;
     try {
+      if (_lastProcessedImage != null) {
+        final tempDir = await getTemporaryDirectory();
+        final filteredPath =
+            '${tempDir.path}/filtered_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        await File(
+          filteredPath,
+        ).writeAsBytes(img.encodeJpg(_lastProcessedImage!));
+        if (!mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => PhotoPreviewScreen(
+              photoPath: filteredPath,
+              filterIndex: _selectedFilter,
+              filters: _filters,
+            ),
+          ),
+        );
+        return;
+      }
+      // fallback: use the camera's takePicture if no processed frame
       final file = await _controller!.takePicture();
       final rawBytes = await File(file.path).readAsBytes();
       img.Image? captured = img.decodeImage(rawBytes);
@@ -162,6 +240,47 @@ class _CameraScreenState extends State<CameraScreen> {
     } catch (e) {
       setState(() => _error = 'Capture error: $e');
     }
+  }
+
+  Future<void> _onTapToFocus(
+    TapUpDetails details,
+    BoxConstraints constraints,
+  ) async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    final RenderBox box = context.findRenderObject() as RenderBox;
+    final Offset localPosition = box.globalToLocal(details.globalPosition);
+    final double x = localPosition.dx / constraints.maxWidth;
+    final double y = localPosition.dy / constraints.maxHeight;
+    try {
+      await _controller!.setFocusPoint(Offset(x, y));
+      setState(() {
+        _focusPoint = Offset(x, y);
+      });
+      // Optionally, show a focus indicator for a short time
+      Future.delayed(const Duration(seconds: 1), () {
+        setState(() {
+          _focusPoint = null;
+        });
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _startTimerAndCapture() async {
+    if (_timer == 0) {
+      await _capturePhoto();
+      return;
+    }
+    setState(() {
+      _countdown = _timer;
+    });
+    while (_countdown > 0) {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return;
+      setState(() {
+        _countdown--;
+      });
+    }
+    await _capturePhoto();
   }
 
   ColorFilter? _getColorFilter(int index, [double intensity = 1.0]) {
@@ -290,6 +409,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
+    _controller?.stopImageStream();
     _controller?.dispose();
     super.dispose();
   }
@@ -371,34 +491,74 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
             // Center: Camera preview
             Expanded(
-              child: AspectRatio(
-                aspectRatio: 16 / 9,
-                child: _error != null
-                    ? Center(
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontSize: 18,
-                          ),
-                        ),
-                      )
-                    : !_isCameraInitialized
-                    ? const Center(child: CircularProgressIndicator())
-                    : Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          CameraPreview(_controller!),
-                          if (_selectedFilter != 0)
-                            ColorFiltered(
-                              colorFilter: _getColorFilter(
-                                _selectedFilter,
-                                _filterIntensity,
-                              )!,
-                              child: Container(color: Colors.transparent),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: _error != null
+                        ? Center(
+                            child: Text(
+                              _error!,
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontSize: 18,
+                              ),
                             ),
-                        ],
-                      ),
+                          )
+                        : !_isCameraInitialized
+                        ? const Center(child: CircularProgressIndicator())
+                        : GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTapUp: (details) =>
+                                _onTapToFocus(details, constraints),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                if (_previewImageBytes != null)
+                                  Image.memory(
+                                    _previewImageBytes!,
+                                    fit: BoxFit.cover,
+                                  )
+                                else
+                                  CameraPreview(_controller!),
+                                if (_countdown > 0)
+                                  Center(
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.black54,
+                                        borderRadius: BorderRadius.circular(40),
+                                      ),
+                                      padding: const EdgeInsets.all(24),
+                                      child: Text(
+                                        '$_countdown',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 64,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                if (_focusPoint != null)
+                                  Positioned(
+                                    left:
+                                        _focusPoint!.dx * constraints.maxWidth -
+                                        20,
+                                    top:
+                                        _focusPoint!.dy *
+                                            constraints.maxHeight -
+                                        20,
+                                    child: Icon(
+                                      Icons.filter_center_focus,
+                                      color: Colors.yellow,
+                                      size: 40,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                  );
+                },
               ),
             ),
             // Right: Camera controls
@@ -442,7 +602,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                   const SizedBox(height: 32),
                   ElevatedButton(
-                    onPressed: _capturePhoto,
+                    onPressed: _countdown > 0 ? null : _startTimerAndCapture,
                     style: ElevatedButton.styleFrom(
                       shape: const CircleBorder(),
                       padding: const EdgeInsets.all(24),
