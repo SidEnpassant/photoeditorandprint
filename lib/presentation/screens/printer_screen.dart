@@ -154,9 +154,42 @@ class _PrinterScreenState extends State<PrinterScreen> {
 
   Widget _buildPrintQueue() {
     if (_printQueue.isEmpty) {
-      return const Text(
-        'No jobs in queue.',
-        style: TextStyle(color: Colors.white70),
+      return Container(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(40),
+              ),
+              child: Icon(
+                Icons.print_outlined,
+                color: Colors.white.withOpacity(0.3),
+                size: 40,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'No jobs in queue',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.6),
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Print jobs will appear here',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.4),
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
       );
     }
     return ListView.builder(
@@ -164,22 +197,73 @@ class _PrinterScreenState extends State<PrinterScreen> {
       itemCount: _printQueue.length,
       itemBuilder: (context, idx) {
         final job = _printQueue[idx];
-        return ListTile(
-          leading: Image.file(
-            File(job.photoPath),
-            width: 40,
-            height: 40,
-            fit: BoxFit.cover,
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF2A2A2A),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.05), width: 1),
           ),
-          title: Text(
-            'Paper: ${job.paperSize}',
-            style: const TextStyle(color: Colors.white),
-          ),
-          subtitle: Text(
-            'Status: ${job.status}',
-            style: TextStyle(
-              color: job.status == 'Printed' ? Colors.green : Colors.red,
-            ),
+          child: Row(
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.1),
+                    width: 1,
+                  ),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.file(File(job.photoPath), fit: BoxFit.cover),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Paper Size: ${job.paperSize}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: job.status == 'Printed'
+                                ? const Color(0xFF00D4AA)
+                                : job.status == 'Failed'
+                                ? Colors.red
+                                : const Color(0xFFFFA726),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Status: ${job.status}',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -187,151 +271,560 @@ class _PrinterScreenState extends State<PrinterScreen> {
   }
 
   Widget _buildPrinterSelector() {
-    if (_scanning) {
-      return const Padding(
-        padding: EdgeInsets.all(8.0),
-        child: CircularProgressIndicator(),
-      );
-    }
-    if (_availablePrinters.isEmpty) {
-      return Row(
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.05), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('No printers found.', style: TextStyle(color: Colors.red)),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: _scanForPrinters,
+          Row(
+            children: [
+              Icon(
+                Icons.print_outlined,
+                color: Colors.white.withOpacity(0.7),
+                size: 20,
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Printer Selection',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6C5CE7).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: IconButton(
+                  icon: _scanning
+                      ? SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              const Color(0xFF6C5CE7),
+                            ),
+                          ),
+                        )
+                      : const Icon(
+                          Icons.refresh,
+                          color: Color(0xFF6C5CE7),
+                          size: 16,
+                        ),
+                  onPressed: _scanning ? null : _scanForPrinters,
+                  padding: EdgeInsets.zero,
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 16),
+          if (_scanning)
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Color(0xFF6C5CE7),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    'Scanning for printers...',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.7),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (_availablePrinters.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    color: Colors.red.withOpacity(0.7),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'No printers found',
+                    style: TextStyle(
+                      color: Colors.red.withOpacity(0.8),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF3A3A3A),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.1),
+                  width: 1,
+                ),
+              ),
+              child: DropdownButton<DiscoveredPrinter>(
+                value: _selectedPrinter,
+                isExpanded: true,
+                underline: const SizedBox(),
+                dropdownColor: const Color(0xFF3A3A3A),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w400,
+                ),
+                items: _availablePrinters
+                    .map(
+                      (printer) => DropdownMenuItem(
+                        value: printer,
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF00D4AA),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(printer.ip),
+                          ],
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (val) {
+                  setState(() => _selectedPrinter = val);
+                },
+              ),
+            ),
         ],
-      );
-    }
-    return Row(
-      children: [
-        const Text('Printer:', style: TextStyle(color: Colors.white)),
-        const SizedBox(width: 8),
-        DropdownButton<DiscoveredPrinter>(
-          value: _selectedPrinter,
-          dropdownColor: Colors.grey[900],
-          style: const TextStyle(color: Colors.white),
-          items: _availablePrinters
-              .map(
-                (printer) =>
-                    DropdownMenuItem(value: printer, child: Text(printer.ip)),
-              )
-              .toList(),
-          onChanged: (val) {
-            setState(() => _selectedPrinter = val);
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.refresh, color: Colors.white),
-          onPressed: _scanForPrinters,
-        ),
-      ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF0F0F0F),
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: const Text('Printer'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.close),
+        backgroundColor: const Color(0xFF1A1A1A),
+        elevation: 0,
+        leading: Container(
+          margin: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new,
+              color: Colors.white,
+              size: 20,
+            ),
             onPressed: () => Navigator.of(context).pop(),
+          ),
+        ),
+        title: const Text(
+          'Print Setup',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.5,
+          ),
+        ),
+        centerTitle: true,
+        actions: [
+          Container(
+            margin: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 22),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(10.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Text(
-              'Print Preview',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 30,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: Center(
-                child: Image.file(
-                  File(widget.photoPath),
-                  fit: BoxFit.contain,
-                  width: 300,
-                  height: 300,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              const Color(0xFF1A1A1A),
+              const Color(0xFF0F0F0F),
+              Colors.black.withOpacity(0.95),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Paper Size: ',
-                  style: TextStyle(fontSize: 26, color: Colors.white),
+                // Header Section
+                Row(
+                  children: [
+                    Container(
+                      width: 4,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF6C5CE7),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    const Text(
+                      'Print Preview',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                DropdownButton<String>(
-                  value: _selectedPaperSize,
-                  dropdownColor: Colors.grey[900],
-                  style: const TextStyle(color: Colors.white),
-                  items: _paperSizes
-                      .map(
-                        (size) => DropdownMenuItem(
-                          value: size,
-                          child: Text(style: TextStyle(fontSize: 23), size),
+                const SizedBox(height: 24),
+
+                // Photo Preview Section
+                Container(
+                  width: double.infinity,
+                  height: 300,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.1),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Image.file(
+                      File(widget.photoPath),
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Paper Size Section
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A2A2A),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.05),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.photo_size_select_actual_outlined,
+                            color: Colors.white.withOpacity(0.7),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'Paper Size',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3A3A3A),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.1),
+                            width: 1,
+                          ),
                         ),
-                      )
-                      .toList(),
-                  onChanged: (val) {
-                    if (val != null) setState(() => _selectedPaperSize = val);
-                  },
+                        child: DropdownButton<String>(
+                          value: _selectedPaperSize,
+                          isExpanded: true,
+                          underline: const SizedBox(),
+                          dropdownColor: const Color(0xFF3A3A3A),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w400,
+                          ),
+                          items: _paperSizes
+                              .map(
+                                (size) => DropdownMenuItem(
+                                  value: size,
+                                  child: Text(size),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (val) {
+                            if (val != null)
+                              setState(() => _selectedPaperSize = val);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Printer Selection Section
+                _buildPrinterSelector(),
+                const SizedBox(height: 24),
+
+                // Print Status Section
+                if (_printStatus != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color:
+                          _printStatus!.contains('failed') ||
+                              _printStatus!.contains('No printer')
+                          ? Colors.red.withOpacity(0.1)
+                          : const Color(0xFF00D4AA).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color:
+                            _printStatus!.contains('failed') ||
+                                _printStatus!.contains('No printer')
+                            ? Colors.red.withOpacity(0.3)
+                            : const Color(0xFF00D4AA).withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color:
+                                _printStatus!.contains('failed') ||
+                                    _printStatus!.contains('No printer')
+                                ? Colors.red
+                                : const Color(0xFF00D4AA),
+                            shape: BoxShape.circle,
+                          ),
+                          child: _printing
+                              ? const SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : Icon(
+                                  _printStatus!.contains('failed') ||
+                                          _printStatus!.contains('No printer')
+                                      ? Icons.error
+                                      : Icons.check,
+                                  color: Colors.white,
+                                  size: 14,
+                                ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          _printStatus!,
+                          style: TextStyle(
+                            color:
+                                _printStatus!.contains('failed') ||
+                                    _printStatus!.contains('No printer')
+                                ? Colors.red
+                                : const Color(0xFF00D4AA),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                // Print Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: _printing
+                          ? LinearGradient(
+                              colors: [
+                                Colors.grey.withOpacity(0.3),
+                                Colors.grey.withOpacity(0.2),
+                              ],
+                            )
+                          : const LinearGradient(
+                              colors: [Color(0xFF6C5CE7), Color(0xFF5A4FCF)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                      boxShadow: _printing
+                          ? []
+                          : [
+                              BoxShadow(
+                                color: const Color(0xFF6C5CE7).withOpacity(0.3),
+                                blurRadius: 15,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                    ),
+                    child: ElevatedButton.icon(
+                      onPressed: _printing ? null : _printPhoto,
+                      icon: _printing
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            )
+                          : const Icon(
+                              Icons.print_rounded,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                      label: Text(
+                        _printing ? 'Printing...' : 'Print Photo',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+
+                // Print Queue Section
+                Row(
+                  children: [
+                    Container(
+                      width: 4,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF6C5CE7),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    const Text(
+                      'Print Queue',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (_printQueue.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6C5CE7).withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${_printQueue.length} ${_printQueue.length == 1 ? 'job' : 'jobs'}',
+                          style: const TextStyle(
+                            color: Color(0xFF6C5CE7),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A1A),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.05),
+                      width: 1,
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: _buildPrintQueue(),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            _buildPrinterSelector(),
-            const SizedBox(height: 16),
-            if (_printStatus != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8.0),
-                child: Text(
-                  _printStatus!,
-                  style: const TextStyle(color: Colors.green, fontSize: 16),
-                ),
-              ),
-            ElevatedButton.icon(
-              onPressed: _printing ? null : _printPhoto,
-              icon: const Icon(color: Colors.white, Icons.print),
-              label: const Text(
-                style: TextStyle(fontSize: 26, color: Colors.white),
-                'Print',
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 16,
-                ),
-                textStyle: const TextStyle(fontSize: 20),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Divider(color: Colors.white24),
-            const SizedBox(height: 8),
-            const Text(
-              'Print Queue',
-              style: TextStyle(color: Colors.white, fontSize: 18),
-            ),
-            const SizedBox(height: 8),
-            Expanded(child: _buildPrintQueue()),
-          ],
+          ),
         ),
       ),
     );
