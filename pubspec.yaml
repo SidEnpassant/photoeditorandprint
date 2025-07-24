@@ -41,7 +41,9 @@ dependencies:
   # printing: ^5.9.3  # For WiFi/internet printing
   # camera_filters: ^0.1.8
   esc_pos_printer: ^4.0.3
-  esc_pos_utils: ^1.1.0       # For generating print-ready documents
+  esc_pos_utils: ^1.1.0
+  # printing: ^5.14.2
+  # pdf: ^3.8.4     # For generating print-ready documents
   # Add any other dependencies as needed
 
 dev_dependencies:

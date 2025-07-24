@@ -34,14 +34,16 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _flashOn = false;
   int _timer = 0;
   String? _error;
-  double _filterIntensity = 1.0;
+  double _filterIntensity = 0.5;
   int _countdown = 0;
   Offset? _focusPoint;
+  int _frameCount = 0;
 
   // For real-time filter preview
   Uint8List? _previewImageBytes;
   img.Image? _lastProcessedImage;
   bool _isProcessingFrame = false;
+  File? _lastPhotoFile;
 
   @override
   void initState() {
@@ -61,7 +63,7 @@ class _CameraScreenState extends State<CameraScreen> {
       });
       _controller = CameraController(
         _cameras[_selectedCameraIdx],
-        ResolutionPreset.medium, // Use medium for better performance in preview
+        ResolutionPreset.medium, // Preview
         enableAudio: false,
       );
       await _controller!.initialize();
@@ -73,6 +75,9 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _processCameraImage(CameraImage cameraImage) async {
+    _frameCount++;
+    // Throttle: process every 3rd frame only
+    if (_frameCount % 3 != 0) return;
     if (_isProcessingFrame) return;
     _isProcessingFrame = true;
     try {
@@ -126,15 +131,19 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() {
       _isCameraInitialized = false;
       _selectedCameraIdx = (_selectedCameraIdx + 1) % _cameras.length;
+      _previewImageBytes = null;
+      _lastProcessedImage = null;
     });
+    await _controller?.stopImageStream();
     await _controller?.dispose();
     _controller = CameraController(
       _cameras[_selectedCameraIdx],
-      ResolutionPreset.high,
+      ResolutionPreset.medium, // Use medium for preview performance
       enableAudio: false,
     );
     await _controller!.initialize();
     setState(() => _isCameraInitialized = true);
+    _controller!.startImageStream(_processCameraImage);
   }
 
   Future<void> _toggleFlash() async {
@@ -198,6 +207,9 @@ class _CameraScreenState extends State<CameraScreen> {
         await File(
           filteredPath,
         ).writeAsBytes(img.encodeJpg(_lastProcessedImage!));
+        setState(() {
+          _lastPhotoFile = File(filteredPath);
+        });
         if (!mounted) return;
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -224,6 +236,9 @@ class _CameraScreenState extends State<CameraScreen> {
         final filteredPath =
             '${tempDir.path}/filtered_${DateTime.now().millisecondsSinceEpoch}.jpg';
         await File(filteredPath).writeAsBytes(img.encodeJpg(filtered));
+        setState(() {
+          _lastPhotoFile = File(filteredPath);
+        });
         if (!mounted) return;
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -439,7 +454,10 @@ class _CameraScreenState extends State<CameraScreen> {
                       itemBuilder: (context, index) => Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8.0),
                         child: GestureDetector(
-                          onTap: () => setState(() => _selectedFilter = index),
+                          onTap: () => setState(() {
+                            _selectedFilter = index;
+                            _frameCount = 0;
+                          }),
                           child: Container(
                             decoration: BoxDecoration(
                               color: _selectedFilter == index
@@ -481,8 +499,10 @@ class _CameraScreenState extends State<CameraScreen> {
                           max: 1.0,
                           divisions: 100,
                           label: (_filterIntensity * 100).toInt().toString(),
-                          onChanged: (val) =>
-                              setState(() => _filterIntensity = val),
+                          onChanged: (val) => setState(() {
+                            _filterIntensity = val;
+                            _frameCount = 0;
+                          }),
                         ),
                       ],
                     ),
@@ -601,6 +621,19 @@ class _CameraScreenState extends State<CameraScreen> {
                     onChanged: (val) => setState(() => _timer = val ?? 0),
                   ),
                   const SizedBox(height: 32),
+                  if (_lastPhotoFile != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16.0),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          _lastPhotoFile!,
+                          width: 64,
+                          height: 64,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
                   ElevatedButton(
                     onPressed: _countdown > 0 ? null : _startTimerAndCapture,
                     style: ElevatedButton.styleFrom(
