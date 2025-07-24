@@ -17,7 +17,10 @@ class _PermissionScreenState extends State<PermissionScreen> {
       _requesting = true;
       _error = null;
     });
-    final statuses = await [Permission.camera, Permission.storage].request();
+    final statuses = await [
+      Permission.camera,
+      //Permission.storage
+    ].request();
     final allGranted = statuses.values.every((status) => status.isGranted);
     setState(() {
       _requesting = false;
@@ -47,7 +50,7 @@ class _PermissionScreenState extends State<PermissionScreen> {
               ),
               const SizedBox(height: 16),
               const Text(
-                'This app needs camera and storage access to capture and save photos.',
+                'This app needs camera access to capture.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 18),
               ),
