@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'dart:typed_data';
+import 'dart:isolate';
+import 'package:flutter/foundation.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -37,12 +39,9 @@ class _CameraScreenState extends State<CameraScreen> {
   double _filterIntensity = 0.5;
   int _countdown = 0;
   Offset? _focusPoint;
-  int _frameCount = 0;
   bool _isIntensityPanelOpen = true;
 
-  Uint8List? _previewImageBytes;
-  img.Image? _lastProcessedImage;
-  bool _isProcessingFrame = false;
+  // Removed conflicting preview variables
   File? _lastPhotoFile;
 
   @override
@@ -69,71 +68,23 @@ class _CameraScreenState extends State<CameraScreen> {
       await _controller!.initialize();
       setState(() => _isCameraInitialized = true);
 
-      await _controller!.startImageStream(_processCameraImage);
+      // Removed image stream processing for better performance
     } catch (e) {
       setState(() => _error = 'Camera error: $e');
     }
-  }
-
-  void _processCameraImage(CameraImage cameraImage) async {
-    _frameCount++;
-    if (_frameCount % 3 != 0) return;
-    if (_isProcessingFrame) return;
-    _isProcessingFrame = true;
-    try {
-      img.Image rgbImage = _convertYUV420toImage(cameraImage);
-      img.Image filtered = _selectedFilter == 0
-          ? rgbImage
-          : _applyFilterToImage(rgbImage, _selectedFilter, _filterIntensity);
-      final pngBytes = img.encodePng(filtered);
-      final imageBytes = Uint8List.fromList(pngBytes);
-      if (mounted) {
-        setState(() {
-          _previewImageBytes = imageBytes;
-          _lastProcessedImage = filtered;
-        });
-      }
-    } catch (e) {
-      debugPrint("Error processing frame: $e");
-    } finally {
-      _isProcessingFrame = false;
-    }
-  }
-
-  img.Image _convertYUV420toImage(CameraImage image) {
-    final int width = image.width;
-    final int height = image.height;
-    final int uvRowStride = image.planes[1].bytesPerRow;
-    final int uvPixelStride = image.planes[1].bytesPerPixel!;
-    final img.Image imgBuffer = img.Image(width, height);
-    for (int y = 0; y < height; y++) {
-      for (int x = 0; x < width; x++) {
-        final int uvIndex = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
-        final int index = y * width + x;
-        final int yp = image.planes[0].bytes[index];
-        final int up = image.planes[1].bytes[uvIndex];
-        final int vp = image.planes[2].bytes[uvIndex];
-        int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
-        int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91)
-            .round()
-            .clamp(0, 255);
-        int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
-        imgBuffer.setPixelRgba(x, y, r, g, b, 255);
-      }
-    }
-    return imgBuffer;
   }
 
   Future<void> _switchCamera() async {
     if (_cameras.length < 2) return;
     setState(() {
       _isCameraInitialized = false;
-      _selectedCameraIdx = (_selectedCameraIdx + 1) % _cameras.length;
-      _previewImageBytes = null;
-      _lastProcessedImage = null;
     });
-    await _controller?.stopImageStream();
+
     await _controller?.dispose();
+    setState(() {
+      _selectedCameraIdx = (_selectedCameraIdx + 1) % _cameras.length;
+    });
+
     _controller = CameraController(
       _cameras[_selectedCameraIdx],
       ResolutionPreset.medium,
@@ -141,7 +92,6 @@ class _CameraScreenState extends State<CameraScreen> {
     );
     await _controller!.initialize();
     setState(() => _isCameraInitialized = true);
-    await _controller!.startImageStream(_processCameraImage);
   }
 
   Future<void> _toggleFlash() async {
@@ -155,51 +105,59 @@ class _CameraScreenState extends State<CameraScreen> {
     if (_selectedFilter == newFilterIndex) return;
     setState(() {
       _selectedFilter = newFilterIndex;
-      _frameCount = 0;
-      _previewImageBytes = null;
-      _lastProcessedImage = null;
     });
   }
 
-  img.Image _applyFilterToImage(
+  // Optimized filter processing in isolate
+  static Future<Uint8List> _processImageInIsolate(List<dynamic> args) async {
+    final Uint8List imageBytes = args[0];
+    final int filterIdx = args[1];
+    final double intensity = args[2];
+
+    img.Image? image = img.decodeImage(imageBytes);
+    if (image == null) return imageBytes;
+
+    img.Image filtered = _applyFilterToImageStatic(image, filterIdx, intensity);
+    return Uint8List.fromList(img.encodeJpg(filtered));
+  }
+
+  static img.Image _applyFilterToImageStatic(
     img.Image image,
     int filterIdx,
     double intensity,
   ) {
     switch (filterIdx) {
-      case 1:
+      case 1: // Vintage
         return img.colorOffset(
           image,
           red: (40 * intensity).toInt(),
           green: (20 * intensity).toInt(),
           blue: (-30 * intensity).toInt(),
         );
-      case 2:
+      case 2: // B&W
         var bw = img.grayscale(image);
         if (bw == null) return image;
         return bw;
-      case 3:
+      case 3: // Color+
         return img.adjustColor(image, saturation: 1 + 0.2 * intensity);
-      case 4:
+      case 4: // Artistic
         var sep = img.sepia(image, amount: (100 * intensity).toInt());
         if (sep == null) return image;
         return sep;
-      case 5:
+      case 5: // Party
         return img.adjustColor(image, gamma: 1 + 0.5 * intensity);
-      case 6:
+      case 6: // Cool
         return img.colorOffset(image, blue: (30 * intensity).toInt());
-      case 7:
+      case 7: // Warm
         return img.colorOffset(image, red: (30 * intensity).toInt());
-      case 8:
+      case 8: // Bright
         final bright = img.brightness(image, (40 * intensity).toInt());
         if (bright != null) return bright;
         return image;
-
-      case 9:
+      case 9: // Dark
         final dark = img.brightness(image, (-40 * intensity).toInt());
         if (dark != null) return dark;
         return image;
-
       default:
         return image;
     }
@@ -208,57 +166,41 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _capturePhoto() async {
     if (!_isCameraInitialized || _controller == null) return;
     try {
-      if (_lastProcessedImage != null && _selectedFilter != 0) {
-        final tempDir = await getTemporaryDirectory();
-        final filteredPath =
-            '${tempDir.path}/filtered_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        await File(
-          filteredPath,
-        ).writeAsBytes(img.encodeJpg(_lastProcessedImage!));
-        setState(() {
-          _lastPhotoFile = File(filteredPath);
-        });
-        if (!mounted) return;
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => PhotoPreviewScreen(
-              photoPath: filteredPath,
-              filterIndex: _selectedFilter,
-              filters: _filters,
-            ),
-          ),
-        );
-        return;
-      }
       final file = await _controller!.takePicture();
       final rawBytes = await File(file.path).readAsBytes();
-      img.Image? captured = img.decodeImage(rawBytes);
-      if (captured != null) {
-        final filtered = _applyFilterToImage(
-          captured,
+
+      // Process image in background if filter is applied
+      Uint8List processedBytes;
+      if (_selectedFilter == 0) {
+        processedBytes = rawBytes;
+      } else {
+        // Use compute for heavy processing
+        processedBytes = await compute(_processImageInIsolate, [
+          rawBytes,
           _selectedFilter,
           _filterIntensity,
-        );
-        final tempDir = await getTemporaryDirectory();
-        final filteredPath =
-            '${tempDir.path}/filtered_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        await File(filteredPath).writeAsBytes(img.encodeJpg(filtered));
-        setState(() {
-          _lastPhotoFile = File(filteredPath);
-        });
-        if (!mounted) return;
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => PhotoPreviewScreen(
-              photoPath: filteredPath,
-              filterIndex: _selectedFilter,
-              filters: _filters,
-            ),
-          ),
-        );
-      } else {
-        setState(() => _error = 'Image decode error');
+        ]);
       }
+
+      final tempDir = await getTemporaryDirectory();
+      final filteredPath =
+          '${tempDir.path}/filtered_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      await File(filteredPath).writeAsBytes(processedBytes);
+
+      setState(() {
+        _lastPhotoFile = File(filteredPath);
+      });
+
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => PhotoPreviewScreen(
+            photoPath: filteredPath,
+            filterIndex: _selectedFilter,
+            filters: _filters,
+          ),
+        ),
+      );
     } catch (e) {
       setState(() => _error = 'Capture error: $e');
     }
@@ -279,9 +221,11 @@ class _CameraScreenState extends State<CameraScreen> {
         _focusPoint = Offset(x, y);
       });
       Future.delayed(const Duration(seconds: 1), () {
-        setState(() {
-          _focusPoint = null;
-        });
+        if (mounted) {
+          setState(() {
+            _focusPoint = null;
+          });
+        }
       });
     } catch (_) {}
   }
@@ -304,14 +248,15 @@ class _CameraScreenState extends State<CameraScreen> {
     await _capturePhoto();
   }
 
+  // Optimized ColorFilter system - single source of truth
   ColorFilter? _getColorFilter(int index, [double intensity = 1.0]) {
     switch (index) {
-      case 1:
+      case 1: // Vintage
         return ColorFilter.mode(
-          Color(0xFF704214).withOpacity(intensity),
-          BlendMode.modulate,
+          Color(0xFF704214).withOpacity(0.3 * intensity),
+          BlendMode.overlay,
         );
-      case 2:
+      case 2: // B&W
         return ColorFilter.matrix(<double>[
           0.2126 * intensity + (1 - intensity),
           0.7152 * intensity,
@@ -334,21 +279,22 @@ class _CameraScreenState extends State<CameraScreen> {
           1,
           0,
         ]);
-      case 3:
+      case 3: // Color+
+        final sat = 1 + 0.3 * intensity;
         return ColorFilter.matrix(<double>[
-          1 + 0.2 * intensity,
+          0.213 + 0.787 * sat,
+          0.715 - 0.715 * sat,
+          0.072 - 0.072 * sat,
           0,
           0,
+          0.213 - 0.213 * sat,
+          0.715 + 0.285 * sat,
+          0.072 - 0.072 * sat,
           0,
           0,
-          0,
-          1 + 0.2 * intensity,
-          0,
-          0,
-          0,
-          0,
-          0,
-          1 + 0.2 * intensity,
+          0.213 - 0.213 * sat,
+          0.715 - 0.715 * sat,
+          0.072 + 0.928 * sat,
           0,
           0,
           0,
@@ -357,41 +303,78 @@ class _CameraScreenState extends State<CameraScreen> {
           1,
           0,
         ]);
-      case 4:
-        return ColorFilter.mode(
-          Color(0xFF00BFFF).withOpacity(intensity),
-          BlendMode.screen,
-        );
-      case 5:
-        return ColorFilter.mode(
-          Color(0xFFFF69B4).withOpacity(intensity),
-          BlendMode.lighten,
-        );
-      case 6:
-        return ColorFilter.mode(
-          Color(0xFF00FFFF).withOpacity(intensity),
-          BlendMode.modulate,
-        );
-      case 7:
-        return ColorFilter.mode(
-          Color(0xFFFFA500).withOpacity(intensity),
-          BlendMode.modulate,
-        );
-      case 8:
+      case 4: // Artistic (Sepia-like)
         return ColorFilter.matrix(<double>[
-          1 + 0.3 * intensity,
+          0.393 + 0.607 * (1 - intensity),
+          0.769 - 0.769 * (1 - intensity),
+          0.189 - 0.189 * (1 - intensity),
+          0,
+          0,
+          0.349 - 0.349 * (1 - intensity),
+          0.686 + 0.314 * (1 - intensity),
+          0.168 - 0.168 * (1 - intensity),
+          0,
+          0,
+          0.272 - 0.272 * (1 - intensity),
+          0.534 - 0.534 * (1 - intensity),
+          0.131 + 0.869 * (1 - intensity),
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+        ]);
+      case 5: // Party (Bright/Gamma)
+        final gamma = 1 + 0.3 * intensity;
+        return ColorFilter.matrix(<double>[
+          gamma,
+          0,
+          0,
+          0,
+          10 * intensity,
+          0,
+          gamma,
+          0,
+          0,
+          10 * intensity,
+          0,
+          0,
+          gamma,
+          0,
+          10 * intensity,
+          0,
+          0,
+          0,
+          1,
+          0,
+        ]);
+      case 6: // Cool
+        return ColorFilter.mode(
+          Color(0xFF00BFFF).withOpacity(0.15 * intensity),
+          BlendMode.overlay,
+        );
+      case 7: // Warm
+        return ColorFilter.mode(
+          Color(0xFFFFA500).withOpacity(0.2 * intensity),
+          BlendMode.overlay,
+        );
+      case 8: // Bright
+        return ColorFilter.matrix(<double>[
+          1,
           0,
           0,
           0,
           30 * intensity,
           0,
-          1 + 0.3 * intensity,
+          1,
           0,
           0,
           30 * intensity,
           0,
           0,
-          1 + 0.3 * intensity,
+          1,
           0,
           30 * intensity,
           0,
@@ -400,23 +383,23 @@ class _CameraScreenState extends State<CameraScreen> {
           1,
           0,
         ]);
-      case 9:
+      case 9: // Dark
         return ColorFilter.matrix(<double>[
-          1 - 0.3 * intensity,
+          0.8,
           0,
           0,
           0,
+          -20 * intensity,
+          0,
+          0.8,
           0,
           0,
-          1 - 0.3 * intensity,
+          -20 * intensity,
           0,
           0,
+          0.8,
           0,
-          0,
-          0,
-          1 - 0.3 * intensity,
-          0,
-          0,
+          -20 * intensity,
           0,
           0,
           0,
@@ -430,7 +413,6 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
-    _controller?.stopImageStream();
     _controller?.dispose();
     super.dispose();
   }
@@ -661,7 +643,6 @@ class _CameraScreenState extends State<CameraScreen> {
                                       divisions: 100,
                                       onChanged: (val) => setState(() {
                                         _filterIntensity = val;
-                                        _frameCount = 0;
                                       }),
                                     ),
                                   ),
@@ -756,13 +737,19 @@ class _CameraScreenState extends State<CameraScreen> {
                                     child: Stack(
                                       fit: StackFit.expand,
                                       children: [
-                                        if (_previewImageBytes != null)
-                                          Image.memory(
-                                            _previewImageBytes!,
-                                            fit: BoxFit.cover,
-                                          )
-                                        else
-                                          CameraPreview(_controller!),
+                                        // Single source camera preview with consistent filter
+                                        ColorFiltered(
+                                          colorFilter:
+                                              _getColorFilter(
+                                                _selectedFilter,
+                                                _filterIntensity,
+                                              ) ??
+                                              const ColorFilter.mode(
+                                                Colors.transparent,
+                                                BlendMode.multiply,
+                                              ),
+                                          child: CameraPreview(_controller!),
+                                        ),
                                         if (_countdown > 0)
                                           Center(
                                             child: Container(
